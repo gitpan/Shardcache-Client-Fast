@@ -1,6 +1,6 @@
 package Shardcache::Client::Fast;
 
-use 5.010000;
+use v5.10;
 use strict;
 use warnings;
 use Carp;
@@ -37,7 +37,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -256,15 +256,17 @@ None by default.
 
 =item * new ( %params )
 
+=back
+
 =head3 REQUIRED PARAMS
     
 =over 4
 
-L<me>
+=item me
 
     A 'address:port' string describing the current node
 
-L<storage>
+=item storage
 
     A valid Shardcache::Storage subclass, implementing the underlying storage
 
@@ -274,17 +276,19 @@ L<storage>
 
 =over
 
-L<nodes>
+=item nodes
 
     An arrayref containing the nodes in our shardcache 'cloud'
 
-L<secret>
+=item secret
 
     A secret used to compute the signature used for internal communication.
     If not specified the string 'default' will be used 
 
 
 =back
+
+=over 4
 
 =item * get ( $key )
 

@@ -1,10 +1,10 @@
 --- #YAML:1.0
 name:               Shardcache-Client-Fast
-version:            0.01
+version:            0.02
 abstract:           Perl extension for the client part of libshardcache
 author:
     - xant <xant@macports.org>
-license:            unknown
+license:            perl
 distribution_type:  module
 configure_requires:
     ExtUtils::MakeMaker:  0

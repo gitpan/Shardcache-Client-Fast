@@ -9,4 +9,5 @@ t/Shardcache-Client-Fast.t
 fallback/const-c.inc
 fallback/const-xs.inc
 lib/Shardcache/Client/Fast.pm
-META.yml                                 Module meta-data (added by MakeMaker)
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)

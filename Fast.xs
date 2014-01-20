@@ -8,6 +8,52 @@
 
 #include "const-c.inc"
 
+typedef struct {
+    SV *code;
+    SV *priv;
+} get_async_helper_arg_t;
+
+static int _get_async_helper (char *node,
+                              void *key,
+                              size_t klen,
+                              void *data,
+                              size_t dlen,
+                              void *priv)
+{
+        get_async_helper_arg_t *arg = (get_async_helper_arg_t *)priv;
+        SV *nodeSv = newSVpv(node, strlen(node));
+        SV *keySv = newSVpv(key, klen);
+        SV *dataSv = newSVpv(data, dlen);
+
+        dSP;
+
+        ENTER;
+        SAVETMPS;
+
+        PUSHMARK(SP);
+        XPUSHs(sv_2mortal(nodeSv));
+        XPUSHs(sv_2mortal(keySv));
+        XPUSHs(sv_2mortal(dataSv));
+        XPUSHs(arg->priv);
+        PUTBACK;
+
+        int count = call_sv(arg->code, G_SCALAR|G_EVAL);
+
+        if (count != 1) {
+            croak("Unexpected errors calling the registered runloop callback");
+        }
+
+        SPAGAIN;
+
+        IV ret = POPi;
+
+        PUTBACK;
+        FREETMPS;
+        LEAVE;
+
+        return ret ? 0 : -1;
+}
+
 MODULE = Shardcache::Client::Fast		PACKAGE = Shardcache::Client::Fast		
 
 INCLUDE: const-xs.inc
@@ -122,6 +168,72 @@ shardcache_client_get(c, key)
     OUTPUT:
         RETVAL
 
+SV *
+shardcache_client_offset(c, key, offset, length)
+	shardcache_client_t *	c
+	SV *	key
+        int     offset
+        int     length
+    CODE:
+	char    data[length];
+	STRLEN	klen = 0;
+        char *k = SvPVbyte(key, klen);
+        size_t size = shardcache_client_offset(c, k, klen, offset, &data, length);
+        if (size > 0) {
+            RETVAL = newSVpv(data, size);
+        } else {
+            RETVAL = &PL_sv_undef;
+        }
+    OUTPUT:
+        RETVAL
+
+int
+shardcache_client_get_async(c, key, coderef, priv=&PL_sv_undef)
+	shardcache_client_t *	c
+	SV *	key
+	SV *	coderef
+	SV *	priv
+
+    CODE:
+
+        if (!SvTRUE(coderef) || ! SvROK(coderef) || SvTYPE(SvRV(coderef)) != SVt_PVCV) {
+            croak("missing coderef or not a CODE reference");
+        }
+	void *	data = NULL;
+	STRLEN	klen = 0;
+        char *k = SvPVbyte(key, klen);
+        get_async_helper_arg_t arg = {
+            .code = coderef,
+            .priv = priv
+        };
+        RETVAL = shardcache_client_get_async(c, k, klen, _get_async_helper, &arg);
+    OUTPUT:
+        RETVAL
+
+int
+shardcache_client_exists(c, key)
+	shardcache_client_t *	c
+	SV *	key
+    CODE:
+	STRLEN	klen = 0;
+        char *k = SvPVbyte(key, klen);
+        RETVAL = shardcache_client_exists(c, k, klen);
+    OUTPUT:
+        RETVAL
+
+int
+shardcache_client_touch(c, key)
+	shardcache_client_t *	c
+	SV *	key
+    CODE:
+	STRLEN	klen = 0;
+        char *k = SvPVbyte(key, klen);
+        RETVAL = shardcache_client_touch(c, k, klen);
+    OUTPUT:
+        RETVAL
+
+
+
 int
 shardcache_client_set(c, key, data, expire)
 	shardcache_client_t *	c
@@ -134,6 +246,21 @@ shardcache_client_set(c, key, data, expire)
 	STRLEN	dlen = 0;
         char *d = SvPVbyte(data, dlen);
         RETVAL = (shardcache_client_set(c, k, klen, d, dlen, expire) == 0);
+    OUTPUT:
+        RETVAL
+
+int
+shardcache_client_add(c, key, data, expire)
+	shardcache_client_t *	c
+	SV *	key
+	SV *	data
+	uint32_t	expire
+    CODE:
+	STRLEN	klen = 0;
+        char *k = SvPVbyte(key, klen);
+	STRLEN	dlen = 0;
+        char *d = SvPVbyte(data, dlen);
+        RETVAL = (shardcache_client_add(c, k, klen, d, dlen, expire) == 0);
     OUTPUT:
         RETVAL
 

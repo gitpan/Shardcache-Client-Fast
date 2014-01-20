@@ -23,7 +23,11 @@ our %EXPORT_TAGS = ( 'all' => [ qw(
 	shardcache_client_destroy
 	shardcache_client_evict
 	shardcache_client_get
+	shardcache_client_get_async
+	shardcache_client_touch
+	shardcache_client_exists
 	shardcache_client_set
+	shardcache_client_add
         shardcache_client_check
         shardcache_client_index
         shardcache_client_stats
@@ -37,7 +41,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '0.03';
+our $VERSION = '0.05';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -72,17 +76,47 @@ XSLoader::load('Shardcache::Client::Fast', $VERSION);
 sub new {
     my ($class, $nodes, $secret) = @_;
 
-    unless($nodes && ref($nodes) && ref($nodes) eq 'ARRAY') {
-        croak("'nodes' MUST be an arrayref of string in the form 'ADDRESS:PORT'");
+    my $self = {
+        _nodes  => [],
+        _secret => $secret,
+    };
+
+    if (ref($nodes) && ref($nodes) eq "ARRAY") {
+        foreach my $h (@$nodes) {
+            my $label;
+            my $addr;
+            if (ref($h) && ref($h) eq "ARRAY") {
+                $label = $h->[0];
+                $addr = $h->[1];
+            } else {
+                if ($h !~ /[a-zA-Z0-9_\.]+:[a-zA-Z0-9_\.]+(:[0-9]+)?/) {
+                    die "Invalid host string $h";
+                }
+                ($label, $addr, my $port) = split(':', $h);
+                $addr = join(':', $addr, $port);
+            }
+            push(@{$self->{_nodes}}, [ $label, $addr ]);
+        }
+    } else {
+        if ($nodes !~ /[a-zA-Z0-9_\.]+:[a-zA-Z0-9_\.]+(:[0-9]+)?/) {
+            die "Invalid host string $nodes";
+        }
+        my ($label, $addr, $port) = split(':', $nodes);
+        if ($port) {
+            $addr = join(':', $addr, $port);
+        } else {
+            $label = join(':', $addr,$port);
+            $addr = $label;
+        }
+        push(@{$self->{_nodes}}, [ $label, $addr ]);
     }
 
     $secret = '' unless defined $secret;
 
-    my $self = {
-        _secret => $secret,
-        _nodes => $nodes,
-        _client => shardcache_client_create($nodes, $secret)
-    };
+    $self->{_client} = shardcache_client_create($self->{_nodes}, $secret);
+
+    return undef unless ($self->{_client});
+
     bless $self, $class;
 
     return $self;
@@ -101,6 +135,24 @@ sub get {
     return $val;
 }
 
+sub offset {
+    my ($self, $key, $offset, $length) = @_;
+    my $val =  shardcache_client_offset($self->{_client}, $key, $offset, $length);
+    if ($val) {
+        undef($self->{_errstr});
+        $self->{_errno} = 0;
+    } else {
+        $self->{_errstr} = shardcache_client_errstr($self->{_client});
+        $self->{_errno} = shardcache_client_errno($self->{_client});
+    }
+    return $val;
+}
+
+sub get_async {
+    my ($self, $key, $cb, $priv) = @_;
+    return shardcache_client_get_async($self->{_client}, $key, $cb, $priv);
+}
+
 sub set {
     my ($self, $key, $value, $expire) = @_;
     $expire = 0 unless defined $expire;
@@ -112,7 +164,47 @@ sub set {
         $self->{_errstr} = shardcache_client_errstr($self->{_client});
         $self->{_errno} = shardcache_client_errno($self->{_client});
     }
+    return ($ret == 0);
+}
+
+sub add {
+    my ($self, $key, $value, $expire) = @_;
+    $expire = 0 unless defined $expire;
+    my $ret = shardcache_client_add($self->{_client}, $key, $value, $expire);
+    if ($ret == 0) {
+        undef($self->{_errstr});
+        $self->{_errno} = 0;
+    } else {
+        $self->{_errstr} = shardcache_client_errstr($self->{_client});
+        $self->{_errno} = shardcache_client_errno($self->{_client});
+    }
+    return ($ret == 0);
+}
+
+sub exists {
+    my ($self, $key) = @_;
+    my $ret = shardcache_client_exists($self->{_client}, $key);
+    if ($ret == 1 || $ret == 0) {
+        undef($self->{_errstr});
+        $self->{_errno} = 0;
+    } else {
+        $self->{_errstr} = shardcache_client_errstr($self->{_client});
+        $self->{_errno} = shardcache_client_errno($self->{_client});
+    }
     return $ret;
+}
+
+sub touch {
+    my ($self, $key) = @_;
+    my $ret = shardcache_client_touch($self->{_client}, $key);
+    if ($ret == 0) {
+        undef($self->{_errstr});
+        $self->{_errno} = 0;
+    } else {
+        $self->{_errstr} = shardcache_client_errstr($self->{_client});
+        $self->{_errno} = shardcache_client_errno($self->{_client});
+    }
+    return ($ret == 0);
 }
 
 sub del {
@@ -125,10 +217,10 @@ sub del {
         $self->{_errstr} = shardcache_client_errstr($self->{_client});
         $self->{_errno} = shardcache_client_errno($self->{_client});
     }
-    return $ret;
+    return ($ret == 0);
 }
 
-sub evict {
+sub evi {
     my ($self, $key) = @_;
     my $ret = shardcache_client_evict($self->{_client}, $key);
     if ($ret == 0) {
@@ -138,10 +230,10 @@ sub evict {
         $self->{_errstr} = shardcache_client_errstr($self->{_client});
         $self->{_errno} = shardcache_client_errno($self->{_client});
     }
-    return $ret;
+    return ($ret == 0);
 }
 
-sub stats {
+sub sts {
     my ($self, $peer) = @_;
     
     if ($peer) {
@@ -156,13 +248,13 @@ sub stats {
     return $out;
 }
 
-sub check {
+sub chk {
     my ($self, $peer) = @_;
     return unless $peer;
-    return shardcache_client_check($self->{_client}, $peer);
+    return (shardcache_client_check($self->{_client}, $peer) == 0);
 }
 
-sub index {
+sub idx {
     my ($self, $peer) = @_;
     if ($peer) {
         return shardcache_client_index($self->{_client}, $peer);
@@ -172,7 +264,7 @@ sub index {
     foreach my $node (@{$self->{_nodes}}) {
          my $index = shardcache_client_index($self->{_client}, $node->[0]);
          if ($index) {
-             push(%$out, %$index);
+             %$out =  { %$out, %$index };
          } else {
              # TODO - Error messages
          }
@@ -206,7 +298,7 @@ Shardcache::Client::Fast - Perl extension for the client part of libshardcache
 =head1 SYNOPSIS
 
   use Shardcache::Client::Fast;
-  @hosts = [ [ "peer1", "localhost:4444" ], [ "peer2", "localhost:4445" ], [ "peer3", "localhost:4446" ] ];
+  @hosts = ("peer1:localhost:4444", "peer2:localhost:4445", "peer3:localhost:4446" );
   $secret = "some_secret";
   $c = Shardcache::Client::Fast->new(\@hosts, $secret);
 
@@ -298,9 +390,44 @@ None by default.
     otherwise a request to the responsible node in the shardcache 'cloud' will be done to obtain the value
     (and the local cache will be populated)
 
+=item * get_async ( $key, $coderef, [ $priv ] )
+
+    Get the value for $key asynchronously.
+
+    This function will block and call the provided callback as soon 
+    as a chunk of data is read from the node.
+    The control will be returned to the caller when there is no
+    more data to read or an error occurred
+
+    $coderef must be a reference to a perl SUB which will get as arguments
+    the tuple : ($node, $key, $data, $priv)
+    $priv will be the same scalar value passed to get_async() as last argument
+
+    If the $coderef, called at each chunk of data being received, returns a 
+    NON-TRUE value the fetch will be interrupted and the coderef won't be called
+    anymore.
+    Returning a TRUE value will make it go ahead until completed.
+
+=item * exists ( $key )
+
+    Check existance of the key on the node responsible for it
+    Returns 1 if the key exists, 0 if doesn't exist, -1 on errors
+
+=item * touch ( $key )
+
+    Fore loading of a key into the cache if not loaded already,
+    otherwise updates the loaded-timestamp for the cached key
+
+    Returns 0 on succes, -1 on errors
+
 =item * set ( $key, $value, [ $expire ] )
 
     Set a new value for $key in the underlying storage
+
+=item * add ( $key, $value, [ $expire ] )
+
+    Set a new value for $key in the underlying storage if it doesn't exists
+    Returns 0 if successfully stored, 1 if already existsing, -1 in case of errors
 
 =item * del ( $key )
 
@@ -325,7 +452,11 @@ None by default.
   void shardcache_client_destroy(shardcache_client_t *c)
   int shardcache_client_evict(shardcache_client_t *c, void *key, size_t klen)
   size_t shardcache_client_get(shardcache_client_t *c, void *key, size_t klen, void **data)
+  int shardcache_get_async(shardcache_t *cache, void *key, size_t klen, shardcache_get_async_callback_t cb, void *priv);
+  int shardcache_client_exists(shardcache_client_t *c, void *key, size_t klen)
+  int shardcache_client_touch(shardcache_client_t *c, void *key, size_t klen)
   int shardcache_client_set(shardcache_client_t *c, void *key, size_t klen, void *data, size_t dlen, uint32_t expire)
+  int shardcache_client_add(shardcache_client_t *c, void *key, size_t klen)
   int shardcache_client_stats(shardcache_client_t *c, char *peer, char **buf, size_t *len);
   int shardcache_client_check(shardcache_client_t *c, char *peer);
   shardcache_storage_index_t *shardcache_client_index(shardcache_client_t *c, char *peer);

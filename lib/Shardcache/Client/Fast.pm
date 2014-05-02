@@ -33,6 +33,7 @@ our %EXPORT_TAGS = ( 'all' => [ qw(
         shardcache_client_stats
         shardcache_client_errno
         shardcache_client_errstr
+        shardcache_client_tcp_timeout
 ) ] );
 
 our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
@@ -41,7 +42,7 @@ our @EXPORT = qw(
 	
 );
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -118,6 +119,11 @@ sub new {
     bless $self, $class;
 
     return $self;
+}
+
+sub tcp_timeout {
+    my ($self, $new_value) = @_;
+    return shardcache_client_tcp_timeout($self->{_client}, $new_value);
 }
 
 sub get {
@@ -231,15 +237,9 @@ sub evict {
     return ($ret == 0);
 }
 
-# XXX - deprecated
-sub evi {
-    my $self = shift;
-    return $self->evict(@_);
-}
-
 sub stats {
     my ($self, $node) = @_;
-    
+
     if ($node) {
         return shardcache_client_stats($self->{_client}, $node);
     }
@@ -252,22 +252,10 @@ sub stats {
     return $out;
 }
 
-# XXX - deprecated
-sub sts {
-    my $self = shift;
-    return $self->stats(@_);
-}
-
 sub check {
     my ($self, $node) = @_;
     return unless $node;
     return (shardcache_client_check($self->{_client}, $node) == 0);
-}
-
-# XXX - deprecated
-sub chk {
-    my $self = shift;
-    return $self->check(@_);
 }
 
 sub index {
@@ -286,12 +274,6 @@ sub index {
          }
     }
     return $out;
-}
-
-# XXX - deprecated
-sub idx {
-    my $self = shift;
-    return $self->index(@_);
 }
 
 sub get_multi {
@@ -516,6 +498,7 @@ None by default.
   int shardcache_client_add(shardcache_client_t *c, void *key, size_t klen)
   int shardcache_client_stats(shardcache_client_t *c, char *node, char **buf, size_t *len);
   int shardcache_client_check(shardcache_client_t *c, char *node);
+  int shardcache_client_tcp_timeout(shardcache_client_t *c, int new_value);
   shardcache_storage_index_t *shardcache_client_index(shardcache_client_t *c, char *node);
   int shardcache_client_errno(shardcache_client_t *c)
   char *shardcache_client_errstr(shardcache_client_t *c)

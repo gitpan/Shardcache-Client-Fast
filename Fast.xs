@@ -123,6 +123,10 @@ shardcache_client_create(nodes, auth=NULL)
     OUTPUT:
         RETVAL
 
+int
+shardcache_client_tcp_timeout(c, new_value)
+	shardcache_client_t *	c
+        int new_value
 
 int
 shardcache_client_del(c, key)
@@ -148,7 +152,7 @@ shardcache_client_evict(c, key)
     CODE:
 	STRLEN	klen = 0;
         char *k = SvPVbyte(key, klen);
-        RETVAL = shardcache_client_del(c, k, klen);
+        RETVAL = shardcache_client_evict(c, k, klen);
     OUTPUT:
         RETVAL
 

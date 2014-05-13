@@ -125,8 +125,13 @@ shardcache_client_create(nodes, auth=NULL)
 
 int
 shardcache_client_tcp_timeout(c, new_value)
-	shardcache_client_t *	c
-        int new_value
+      shardcache_client_t *   c
+      int new_value
+
+int
+shardcache_client_use_random_node(c, new_value)
+      shardcache_client_t *   c
+      int new_value
 
 int
 shardcache_client_del(c, key)
@@ -343,7 +348,7 @@ shardcache_client_get_multi(c, items)
 
                     STRLEN klen = 0;
                     char *key = SvPVbyte(*svp, klen);
-                    items_array[i] = shc_multi_item_create(c, key, klen, NULL, 0);
+                    items_array[i] = shc_multi_item_create(key, klen, NULL, 0);
                 }
                 items_array[num_items] = NULL; // null-terminate it
 
@@ -414,7 +419,7 @@ shardcache_client_set_multi(c, items)
 
                     STRLEN vlen = 0;
                     char *value = SvPVbyte(value_sv, vlen);
-                    items_array[i] = shc_multi_item_create(c, key, klen, value, vlen);
+                    items_array[i] = shc_multi_item_create(key, klen, value, vlen);
                     i++;
                 }
 

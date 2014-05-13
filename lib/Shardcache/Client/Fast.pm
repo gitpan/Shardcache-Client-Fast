@@ -14,35 +14,36 @@ our @ISA = qw(Exporter);
 # names by default without a very good reason. Use EXPORT_OK instead.
 # Do not simply export all your public functions/methods/constants.
 
-# This allows declaration	use Shardcache::Client::Fast ':all';
+# This allows declaration use Shardcache::Client::Fast ':all';
 # If you do not need this, moving things directly into @EXPORT or @EXPORT_OK
 # will save memory.
 our %EXPORT_TAGS = ( 'all' => [ qw(
-	shardcache_client_create
-	shardcache_client_del
-	shardcache_client_destroy
-	shardcache_client_evict
-	shardcache_client_get
-	shardcache_client_get_async
-	shardcache_client_touch
-	shardcache_client_exists
-	shardcache_client_set
-	shardcache_client_add
+        shardcache_client_create
+        shardcache_client_del
+        shardcache_client_destroy
+        shardcache_client_evict
+        shardcache_client_get
+        shardcache_client_get_async
+        shardcache_client_touch
+        shardcache_client_exists
+        shardcache_client_set
+        shardcache_client_add
         shardcache_client_check
         shardcache_client_index
         shardcache_client_stats
         shardcache_client_errno
         shardcache_client_errstr
         shardcache_client_tcp_timeout
+        shardcache_client_use_random_node
 ) ] );
 
 our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
 
 our @EXPORT = qw(
-	
+    
 );
 
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -55,14 +56,14 @@ sub AUTOLOAD {
     my ($error, $val) = constant($constname);
     if ($error) { croak $error; }
     {
-	no strict 'refs';
-	# Fixed between 5.005_53 and 5.005_61
-#XXX	if ($] >= 5.00561) {
-#XXX	    *$AUTOLOAD = sub () { $val };
-#XXX	}
-#XXX	else {
-	    *$AUTOLOAD = sub { $val };
-#XXX	}
+        no strict 'refs';
+        # Fixed between 5.005_53 and 5.005_61
+#XXX        if ($] >= 5.00561) {
+#XXX            *$AUTOLOAD = sub () { $val };
+#XXX        }
+#XXX        else {
+            *$AUTOLOAD = sub { $val };
+#XXX        }
     }
     goto &$AUTOLOAD;
 }
@@ -90,8 +91,8 @@ sub new {
                 $label = $h->[0];
                 $addr = $h->[1];
             } else {
-                if ($h !~ /[a-zA-Z0-9_\.]+:[a-zA-Z0-9_\.]+(:[0-9]+)?/) {
-                    die "Invalid host string $h";
+                if ($h !~ /^[a-zA-Z0-9_\.]+:[a-zA-Z0-9\-\.]+(:[0-9]+)?$/) {
+                    die "Invalid host string '$h'";
                 }
                 ($label, $addr, my $port) = split(':', $h);
                 $addr = join(':', $addr, $port);
@@ -99,8 +100,11 @@ sub new {
             push(@{$self->{_nodes}}, [ $label, $addr ]);
         }
     } else {
-        if ($nodes !~ /[a-zA-Z0-9_\.]+:[a-zA-Z0-9_\.]+(:[0-9]+)?/) {
-            die "Invalid host string $nodes";
+        if (!$nodes) {
+            die "Empty host string";
+        }
+        elsif ($nodes !~ /^[a-zA-Z0-9_\.]+:[a-zA-Z0-9\-\.]+(:[0-9]+)?$/) {
+            die "Invalid host string '$nodes'";
         }
         my ($label, $addr, $port) = split(':', $nodes);
         if ($port) {
@@ -124,6 +128,11 @@ sub new {
 sub tcp_timeout {
     my ($self, $new_value) = @_;
     return shardcache_client_tcp_timeout($self->{_client}, $new_value);
+}
+
+sub use_random_node {
+    my ($self, $new_value) = @_;
+    return shardcache_client_use_random_node($self->{_client}, $new_value);
 }
 
 sub get {
@@ -399,6 +408,22 @@ None by default.
 
 =over 4
 
+=item * tcp_timeout ( $new_value )
+
+    Set/Get the tcp timeout (in milliseconds) used for all operations on a tcp socket (such as connect(), read(), write()).
+    A value of 0 means no-timeout (system-wide timeouts might still apply).
+    If $new_value is negative, no new value will be set but the current value will be returned.
+    If $new_value is positive it will set as new tcp timeout and the old value will be returned.
+
+=item * use_random_node ( $new_value )
+
+    Set the internal shardcache client flag which determines if using the consistent hashing to
+    always query the node responsible for a given key, or select any random node among the available
+    ones when executing a get/set/del/evict command.
+    If $new_value is true a random node will be used, if false the node responsible for the specific
+    key will be selected.
+    Note that the 'stats', the 'index' and the 'migration*' commands are not affected by this flag
+
 =item * get ( $key )
 
     Get the value for $key. 
@@ -462,7 +487,7 @@ None by default.
 
     Retrieve the index for a given node (or all nodes if none is provided as parameter).
 
-=item * check ( $node )
+=item * check ( [ $node ] )
 
     Checks the status of a given node (or all nodes if none is provided as parameter).
 
@@ -472,7 +497,7 @@ None by default.
     Returns an arrayref containing the values for the requested keys. Values are stored at the same index of the
     corresponding key in the input array. Empty or unretrieved values will be returned as undef.
 
-    Note that multi commands are not all‐or‐nothing, some operations may succeed, while others may fail.
+    Note that multi-commands are not all-or-nothing, some operations may succeed, while others may fail.
 
 =item * set_multi ( %$pairs )
 
@@ -480,7 +505,7 @@ None by default.
     Returns an hashref containing the same keys of the input hashref as keys and the status of the operation as values
     (1 if successfully set, 0 otherwise).
 
-    Note that multi commands are not all‐or‐nothing, some operations may succeed, while others may fail.
+    Note that multi-commands are not all-or-nothing, some operations may succeed, while others may fail.
 
 =back
 
@@ -499,6 +524,7 @@ None by default.
   int shardcache_client_stats(shardcache_client_t *c, char *node, char **buf, size_t *len);
   int shardcache_client_check(shardcache_client_t *c, char *node);
   int shardcache_client_tcp_timeout(shardcache_client_t *c, int new_value);
+  int shardcache_client_use_random_node(shardcache_client_t *c, int new_value);
   shardcache_storage_index_t *shardcache_client_index(shardcache_client_t *c, char *node);
   int shardcache_client_errno(shardcache_client_t *c)
   char *shardcache_client_errstr(shardcache_client_t *c)

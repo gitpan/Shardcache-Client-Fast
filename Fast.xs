@@ -368,7 +368,7 @@ shardcache_client_get_multi(c, keys, results = &PL_sv_undef)
                 items_array[num_items] = NULL; // null-terminate it
 
                 int rc = shardcache_client_get_multi(c, items_array);
-                if (rc == 0) {
+                if (rc >= 0) { // 0 means OK, 1 means that some keys failed and some succeeded
                     AV *out_array;
                     if (!SvROK(results) || SvTYPE(SvRV(results)) != SVt_PVAV) {
                         out_array = newAV();
@@ -385,7 +385,7 @@ shardcache_client_get_multi(c, keys, results = &PL_sv_undef)
                         if (items_array[i]->data)
                             item_sv = newSVpv(items_array[i]->data, items_array[i]->dlen);
 
-                        if (!av_store(out_array, i, item_sv))
+                        if (!av_store(out_array, i, item_sv) && item_sv != &PL_sv_undef)
                             SvREFCNT_dec(item_sv);
 
                         shc_multi_item_destroy(items_array[i]);
@@ -468,6 +468,19 @@ shardcache_client_set_multi(c, keys)
             }
         }
 
+    OUTPUT:
+        RETVAL
+
+SV *
+shardcache_client_current_node(c)
+        shardcache_client_t *c
+    CODE:
+        RETVAL = &PL_sv_undef;
+        shardcache_node_t *node = shardcache_client_current_node(c);
+        if (node) {
+            char *string = shardcache_node_get_string(node);
+            RETVAL = newSVpv(string, strlen(string));
+        }
     OUTPUT:
         RETVAL
 

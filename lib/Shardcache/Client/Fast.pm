@@ -3,26 +3,19 @@ package Shardcache::Client::Fast;
 use v5.10;
 use strict;
 use warnings;
-use Carp;
-
-require Exporter;
+use Carp qw(croak);
+use Exporter;
 use AutoLoader;
 
 our @ISA = qw(Exporter);
 
-# Items to export into callers namespace by default. Note: do not export
-# names by default without a very good reason. Use EXPORT_OK instead.
-# Do not simply export all your public functions/methods/constants.
-
-# This allows declaration use Shardcache::Client::Fast ':all';
-# If you do not need this, moving things directly into @EXPORT or @EXPORT_OK
-# will save memory.
 our %EXPORT_TAGS = ( 'all' => [ qw(
         shardcache_client_create
         shardcache_client_del
         shardcache_client_destroy
         shardcache_client_evict
         shardcache_client_get
+        shardcache_client_getf
         shardcache_client_get_async
         shardcache_client_touch
         shardcache_client_exists
@@ -43,11 +36,9 @@ our %EXPORT_TAGS = ( 'all' => [ qw(
 
 our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
 
-our @EXPORT = qw(
-    
-);
+our @EXPORT;
 
-our $VERSION = '0.17';
+our $VERSION = '0.18';
 
 sub AUTOLOAD {
     # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -61,23 +52,13 @@ sub AUTOLOAD {
     if ($error) { croak $error; }
     {
         no strict 'refs';
-        # Fixed between 5.005_53 and 5.005_61
-#XXX        if ($] >= 5.00561) {
-#XXX            *$AUTOLOAD = sub () { $val };
-#XXX        }
-#XXX        else {
-            *$AUTOLOAD = sub { $val };
-#XXX        }
+        *$AUTOLOAD = sub { $val };
     }
     goto &$AUTOLOAD;
 }
 
-require XSLoader;
+use XSLoader;
 XSLoader::load('Shardcache::Client::Fast', $VERSION);
-
-# Preloaded methods go here.
-
-# Autoload methods go after =cut, and are processed by the autosplit program.
 
 sub new {
     my ($class, $nodes, $secret, $log_level) = @_;
@@ -159,29 +140,36 @@ sub current_node {
     return shardcache_client_current_node($self->{_client});
 }
 
-sub get {
-    my ($self, $key) = @_;
-    my $val =  shardcache_client_get($self->{_client}, $key);
+sub _clear_err {
+    my ($self, $val) = @_;
     if ($val) {
-        undef($self->{_errstr});
+        delete $self->{_errstr};
         $self->{_errno} = 0;
     } else {
         $self->{_errstr} = shardcache_client_errstr($self->{_client});
         $self->{_errno} = shardcache_client_errno($self->{_client});
     }
+}
+
+sub get {
+    my ($self, $key) = @_;
+    my $val = shardcache_client_get($self->{_client}, $key);
+    $self->_clear_err($val);
     return $val;
+}
+
+sub getf {
+    my ($self, $key) = @_;
+    my $fd = shardcache_client_getf($self->{_client}, $key);
+    my $fh;
+    open($fh, "<&=", $fd);
+    return $fh;
 }
 
 sub offset {
     my ($self, $key, $offset, $length) = @_;
     my $val =  shardcache_client_offset($self->{_client}, $key, $offset, $length);
-    if ($val) {
-        undef($self->{_errstr});
-        $self->{_errno} = 0;
-    } else {
-        $self->{_errstr} = shardcache_client_errstr($self->{_client});
-        $self->{_errno} = shardcache_client_errno($self->{_client});
-    }
+    $self->_clear_err($val);
     return $val;
 }
 
@@ -193,81 +181,45 @@ sub get_async {
 sub set {
     my ($self, $key, $value, $expire) = @_;
     $expire = 0 unless defined $expire;
-    my $ret = shardcache_client_set($self->{_client}, $key, $value, $expire);
-    if ($ret == 0) {
-        undef($self->{_errstr});
-        $self->{_errno} = 0;
-    } else {
-        $self->{_errstr} = shardcache_client_errstr($self->{_client});
-        $self->{_errno} = shardcache_client_errno($self->{_client});
-    }
-    return ($ret == 0);
+    my $val = shardcache_client_set($self->{_client}, $key, $value, $expire) == 0;
+    $self->_clear_err($val);
+    return $val;
 }
 
 sub add {
     my ($self, $key, $value, $expire) = @_;
     $expire = 0 unless defined $expire;
-    my $ret = shardcache_client_add($self->{_client}, $key, $value, $expire);
-    if ($ret == 0) {
-        undef($self->{_errstr});
-        $self->{_errno} = 0;
-    } else {
-        $self->{_errstr} = shardcache_client_errstr($self->{_client});
-        $self->{_errno} = shardcache_client_errno($self->{_client});
-    }
-    return ($ret == 0);
+    my $val = shardcache_client_add($self->{_client}, $key, $value, $expire) == 0;
+    $self->_clear_err($val);
+    return $val;
 }
 
 sub exists {
     my ($self, $key) = @_;
     my $ret = shardcache_client_exists($self->{_client}, $key);
-    if ($ret == 1 || $ret == 0) {
-        undef($self->{_errstr});
-        $self->{_errno} = 0;
-    } else {
-        $self->{_errstr} = shardcache_client_errstr($self->{_client});
-        $self->{_errno} = shardcache_client_errno($self->{_client});
-    }
+    $self->_clear_err($ret == 1 || $ret == 0);
     return $ret;
 }
 
 sub touch {
     my ($self, $key) = @_;
-    my $ret = shardcache_client_touch($self->{_client}, $key);
-    if ($ret == 0) {
-        undef($self->{_errstr});
-        $self->{_errno} = 0;
-    } else {
-        $self->{_errstr} = shardcache_client_errstr($self->{_client});
-        $self->{_errno} = shardcache_client_errno($self->{_client});
-    }
-    return ($ret == 0);
+    my $val = shardcache_client_touch($self->{_client}, $key) == 0;
+    $self->_clear_err($val);
+    return $val;
 }
 
 sub del {
     my ($self, $key) = @_;
-    my $ret = shardcache_client_del($self->{_client}, $key);
-    if ($ret == 0) {
-        undef($self->{_errstr});
-        $self->{_errno} = 0;
-    } else {
-        $self->{_errstr} = shardcache_client_errstr($self->{_client});
-        $self->{_errno} = shardcache_client_errno($self->{_client});
-    }
-    return ($ret == 0);
+    my $val = shardcache_client_del($self->{_client}, $key) == 0;
+    $self->_clear_err($val);
+    return $val;
 }
 
 sub evict {
     my ($self, $key) = @_;
-    my $ret = shardcache_client_evict($self->{_client}, $key);
-    if ($ret == 0) {
-        undef($self->{_errstr});
-        $self->{_errno} = 0;
-    } else {
-        $self->{_errstr} = shardcache_client_errstr($self->{_client});
-        $self->{_errno} = shardcache_client_errno($self->{_client});
-    }
-    return ($ret == 0);
+    my $val = shardcache_client_evict($self->{_client}, $key) == 0;
+    $self->_clear_err($val);
+    return $val;
 }
 
 sub stats {
@@ -316,6 +268,14 @@ sub get_multi {
     wantarray ? @$res : $res;
 }
 
+sub get_multif {
+    my ($self, $keys) = @_;
+    my $fd = shardcache_client_get_multif($self->{_client}, $keys);
+    my $fh;
+    open($fh, "<&=", $fd);
+    return $fh;
+}
+
 sub set_multi {
     my ($self, $pairs) = @_;
     my $res = shardcache_client_set_multi($self->{_client}, $pairs);
@@ -338,8 +298,8 @@ sub DESTROY {
         if ($self->{_client})
 }
 
-
 1;
+
 __END__
 
 =head1 NAME
@@ -386,7 +346,7 @@ Shardcache::Client::Fast - Perl extension for the client part of libshardcache
 =head1 DESCRIPTION
 
 Perl bindings to libshardcache-client. This library is a replacement for the pure-perl
-Sharcache::Client allowing faster access to shardcache nodes by using libshardcache directly
+Shardcache::Client allowing faster access to shardcache nodes by using libshardcache directly
 instead of reimplementing the protocol and handling connections on the perl side.
 
 =head2 EXPORT
@@ -405,13 +365,9 @@ None by default.
 
 =over 4
 
-=item me
+=item @$hosts
 
-    A 'address:port' string describing the current node
-
-=item storage
-
-    A valid Shardcache::Storage subclass, implementing the underlying storage
+    An arrayref of 'name:address:port' strings describing the nodes serving the sharded cache
 
 =back
 
@@ -419,15 +375,18 @@ None by default.
 
 =over
 
-=item nodes
-
-    An arrayref containing the nodes in our shardcache 'cloud'
-
-=item secret
+=item $secret
 
     A secret used to compute the signature used for internal communication.
     If not specified the string 'default' will be used 
 
+=item $log_level
+
+    The loglevel used by libshardcache internal routines.
+    Note that libshardcache uses syslog levels and it initializes
+    itself by evaluating the expression : "LOG_INFO + $log_level".
+    So anything greater than 0 will enable debug messages (there are up to 5 debug levels);
+    negative numbers will progressively inhibit info, notice, warning and error messages.
 
 =back
 
@@ -442,7 +401,7 @@ None by default.
 
 =item * use_random_node ( $new_value )
 
-    Set the internal shardcache client flag which determines if using the consistent hashing to
+    Set/Get the internal shardcache client flag which determines if using the consistent hashing to
     always query the node responsible for a given key, or select any random node among the available
     ones when executing a get/set/del/evict command.
     If $new_value is true a random node will be used, if false the node responsible for the specific
@@ -451,7 +410,7 @@ None by default.
 
 =item * pipeline_max ( $new_value )
 
-    Set the maximum number of requests to pipeline on a single connection.
+    Set/Get the maximum number of requests to pipeline on a single connection.
     This setting affects how many parallel connections will be used to execute a multi command
 
 =item * get ( $key )
@@ -552,7 +511,7 @@ None by default.
 
 =item * https://github.com/xant/libshardcache
 
-=item * http://xant.github.io/libshardcache/
+=item * http://xant.github.io/libshardcache/shardcache__client_8h.html
 
 =back
 
